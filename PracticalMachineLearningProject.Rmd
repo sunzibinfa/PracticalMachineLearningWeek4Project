@@ -1,0 +1,154 @@
+---
+title: "Practical Machine Learning Week 4 Project"
+author: "XH"
+date: "4/20/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+## PURPOSE
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Using the measurements taken, we are asked to build a model to predict the manner they did their excercise using the outcome variable 'classe'.  The 5 outcomes of 'classe' are:
+
+1. Exactly according to the specification (Class A)
+2. Throwing the elbows to the front (Class B) 
+3. Lifting the dumbbell only halfway (Class C) 
+4. Lowering the dumbbell only halfway (Class D) 
+5. Throwing the hips to the front (Class E) 
+
+## DATA
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har].  
+
+The training data set is here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data set is here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+```{r loaddata}
+#Load data sets
+training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+quiz <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+#Look at dimensions of data
+dim(training)
+dim(quiz)
+```
+
+The training data set has 19622 observations and 160 variables whereas the testing data set has 20 observations and 160 variables as well.
+
+## DATA CLEANING
+
+First, we will remove any variables that have close to non-zero variance.
+
+```{r Nonzerovariance}
+#load libraies need to do predictions
+library(caret)
+library(randomForest)
+library(rpart)
+
+#Eliminate variables with close to zero variance
+zero_var <- nearZeroVar(training)
+training <- training[,-zero_var]
+quiz <- quiz[,-zero_var]
+dim(training)
+dim(quiz)
+```
+
+This has removed 60 variables and we are left with 100 columns now.  Next, we will remove variables where the majority of the values are N/A.  We will use a threshould of 95%.
+
+```{r NA}
+#Remove variables with 95% or greather NA values
+na <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[,na == FALSE]
+quiz <- quiz[,na == FALSE]
+dim(training)
+dim(quiz)
+```
+
+We are now left with 59 variables.  Finally, we will remove the first seven variables from the data set because these are non predictors.
+
+```{r nonpredictors}
+#Remove non-predictors
+training <- training[,8:59]
+quiz <- quiz[,8:59]
+dim(training)
+dim(quiz)
+```
+
+Thus, our cleaned data set contains only 52 variables.  Next, we start to build our model.
+
+## DATA PARTITION
+
+We will first partition our training data set into a training and test data set using a 60%/40% split.
+
+
+```{r partition}
+#Partition data into training and test data sets
+intrain     <- createDataPartition(training$classe, p = 0.6, list = FALSE)
+intraining  <- training[intrain,]
+intest      <- training[-intrain,]
+dim(intraining)
+dim(intest)
+```
+
+## MODEL BUILDING
+
+### DECISION TREE
+
+For this project, we are attempting to predict a classification.  Hence, it would be a good idea to try the decision tree model and random forest models.  First, we will try the decision tree model with 10-fold cross validation in an attempt to increase our accuracy.
+
+```{r decisiontree}
+#Define training control
+set.seed(924) 
+train.control <- trainControl(method = "cv", number = 10)
+#Train the model
+modelDT <- train(classe ~., data = intraining, method = "rpart",trControl = train.control)
+#Prediction of decision trees
+predictDT <- predict(modelDT, intest)
+#Confusion Matrix for Decision trees
+confusionMatrix(predictDT, intest$classe)
+
+#Plot decision tree
+library(rpart.plot)
+rpart.plot(modelDT$finalModel, roundint=FALSE)
+```
+
+We see from the confusion matrix and the plot that accuracy is roughly 50% which means our out of sample error is around 50% as well.  Thus, we will go on to try another model which is the random forest.
+
+### RANDOM FOREST
+
+Due to the bad accuracy prediction of decision tree, we will now try random forest with 10-fold cross validation as well.
+
+```{r}
+#Define training control
+set.seed(924) 
+#Train the model
+modelRF <- train(classe ~., data = intraining, method = "rf", ntree=100,trControl = train.control)
+#Prediction of Random Forest
+predictRF <- predict(modelRF, intest)
+#Confusion matrix for Random Forest
+confusionMatrix(predictRF, intest$classe)
+```
+
+For the random forest model, the accuracy is 99.15% which is much better than the decision tree model.  Our out of sample error is just 0.85%.  Hence, this is the model that we select to predict the 'classe' outcome.
+
+## QUIZ PREDICTION
+
+Now, we will use our selected model to predict the outcome using our quiz data set.
+
+```{r quiz}
+#Predict quiz data set
+print(predict(modelRF, newdata=quiz))
+```
+
+## CONCLUSION
+
+In this project, we looked at the decision tree algorithm with 10-fold cross validation as well as the random forest algorithm with 10-fold cross-validation.  Based on the out of sample error, the model selected was random forest which had a 99.15% accuracy compared to the decision tree which had an accuracy of only around 50%.
